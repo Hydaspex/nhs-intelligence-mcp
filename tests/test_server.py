@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from nhs_intel.domain import WaitTimePoint
-from nhs_intel.server import _trend_payload
+from nhs_intel.domain import CurrentWait, WaitTimePoint
+from nhs_intel.server import _lookup_payload, _ranking_payload, _trend_payload
 
 
 class FakeSource:
@@ -24,6 +24,26 @@ class FakeSource:
             p
             for p in self._points
             if p.provider_code == provider_code and p.specialty == specialty
+        ]
+
+
+class FakeCurrentSource:
+    """In-memory CurrentWaitSource for tests."""
+
+    def __init__(self, records: list[CurrentWait]) -> None:
+        self._records = records
+
+    def latest(self, provider: str, specialty: str) -> CurrentWait | None:
+        matches = [
+            r for r in self._records if r.provider == provider and r.specialty == specialty
+        ]
+        return matches[0] if matches else None
+
+    def for_specialty(self, specialty: str, region: str | None = None) -> list[CurrentWait]:
+        return [
+            r
+            for r in self._records
+            if r.specialty == specialty and (region is None or r.region == region)
         ]
 
 
@@ -54,3 +74,39 @@ def test_trend_tool_reports_not_found_for_single_point():
     out = _trend_payload("RGT", "Cardiology", FakeSource(one))
     assert out["found"] is False
     assert "one data point" in out["reason"]
+
+
+def _current() -> list[CurrentWait]:
+    return [
+        CurrentWait("London", "Guy's", "Cardiology", 14, date(2026, 8, 24)),
+        CurrentWait("London", "King's", "Cardiology", 19, date(2026, 8, 24)),
+        CurrentWait("North West", "MRI", "Cardiology", 11, date(2026, 8, 24)),
+    ]
+
+
+def test_lookup_tool_returns_current_wait():
+    out = _lookup_payload("Guy's", "Cardiology", FakeCurrentSource(_current()))
+    assert out["found"] is True
+    assert out["weeks"] == 14
+    assert out["provider"] == "Guy's"
+
+
+def test_lookup_tool_not_found():
+    out = _lookup_payload("Nowhere", "Cardiology", FakeCurrentSource(_current()))
+    assert out["found"] is False
+    assert out["reason"] == "no current data"
+
+
+def test_ranking_tool_orders_longest_first():
+    out = _ranking_payload("Cardiology", FakeCurrentSource(_current()))
+    assert out["count"] == 3
+    assert [t["provider"] for t in out["trusts"]] == ["King's", "Guy's", "MRI"]
+
+
+def test_ranking_tool_respects_region_and_limit():
+    out = _ranking_payload(
+        "Cardiology", FakeCurrentSource(_current()), region="London", limit=1
+    )
+    assert out["region"] == "London"
+    assert out["count"] == 1
+    assert out["trusts"][0]["provider"] == "King's"

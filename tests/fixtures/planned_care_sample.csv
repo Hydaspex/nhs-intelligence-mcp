@@ -1,0 +1,7 @@
+region,provider,specialty,source_url,metric,average_wait_weeks,patients_seen_within_weeks,page_last_updated
+London,Guy's and St Thomas',Cardiology,https://www.myplannedcare.nhs.uk/london/guys/,first_outpatient_appointment,14,90,2026-08-24
+London,Guy's and St Thomas',Cardiology,https://www.myplannedcare.nhs.uk/london/guys/,treatment,22,80,2026-08-24
+London,King's College Hospital,Cardiology,https://www.myplannedcare.nhs.uk/london/kings/,first_outpatient_appointment,19,85,2026-08-24
+North West,Manchester Royal Infirmary,Cardiology,https://www.myplannedcare.nhs.uk/north-west/mri/,first_outpatient_appointment,11,92,2026-08-24
+London,Guy's and St Thomas',Trauma & Orthopaedics,https://www.myplannedcare.nhs.uk/london/guys/,first_outpatient_appointment,,,2026-08-24
+London,St George's,Cardiology,https://www.myplannedcare.nhs.uk/london/stgeorges/,first_outpatient_appointment,19,85,2026-08-17

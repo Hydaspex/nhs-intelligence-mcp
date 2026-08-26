@@ -6,9 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from nhs_intel.config import RTT_CSV_ENV, Settings
+from nhs_intel.config import PLANNED_CARE_CSV_ENV, RTT_CSV_ENV, Settings
 
 FIXTURE = Path(__file__).parent / "fixtures" / "rtt_sample.csv"
+PC_FIXTURE = Path(__file__).parent / "fixtures" / "planned_care_sample.csv"
 
 
 def test_from_env_resolves_existing_path():
@@ -24,3 +25,17 @@ def test_missing_variable_names_the_variable():
 def test_nonexistent_path_is_rejected():
     with pytest.raises(RuntimeError, match="does not point at a file"):
         Settings.from_env({RTT_CSV_ENV: "/no/such/file.csv"})
+
+
+def test_planned_care_is_optional():
+    settings = Settings.from_env({RTT_CSV_ENV: str(FIXTURE)})
+    assert settings.planned_care_csv_path is None
+    with pytest.raises(RuntimeError, match=PLANNED_CARE_CSV_ENV):
+        settings.require_planned_care()
+
+
+def test_planned_care_resolved_when_present():
+    settings = Settings.from_env(
+        {RTT_CSV_ENV: str(FIXTURE), PLANNED_CARE_CSV_ENV: str(PC_FIXTURE)}
+    )
+    assert settings.require_planned_care() == PC_FIXTURE

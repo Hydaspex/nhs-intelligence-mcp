@@ -44,6 +44,37 @@ class WaitTimePoint:
 
 
 @dataclass(frozen=True)
+class CurrentWait:
+    """The latest reported wait for a trust/specialty from My Planned Care.
+
+    This is the weekly current-state counterpart to the RTT time series. It is
+    keyed on the provider *name* and region, because that is the identity My
+    Planned Care publishes; RTT's numeric provider code is a separate scheme,
+    reconciled only where the two must meet (the combined trust profile).
+
+    ``weeks`` may be ``None`` when a trust publishes a specialty row but no
+    average-wait figure for it, so callers must treat missing figures explicitly
+    rather than assuming a number is always present.
+    """
+
+    region: str
+    provider: str
+    specialty: str
+    weeks: int | None
+    as_of: date | None
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialise to the JSON shape returned by current-state tools."""
+        return {
+            "region": self.region,
+            "provider": self.provider,
+            "specialty": self.specialty,
+            "weeks": self.weeks,
+            "as_of": self.as_of.isoformat() if self.as_of else None,
+        }
+
+
+@dataclass(frozen=True)
 class TrendResult:
     """Outcome of comparing the earliest and latest points in a series."""
 

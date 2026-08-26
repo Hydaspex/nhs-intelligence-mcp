@@ -11,10 +11,21 @@ That keeps the numbers deterministic and the whole server unit-testable offline.
 
 ## Status
 
-Milestone 1: a runnable vertical slice. One tool, `wait_time_trend`, backed by
-NHS England RTT data, end to end, with an offline test suite. Later milestones
-add the weekly My Planned Care current-state layer, CQC ratings, ranking, and a
-combined trust profile (see `../nhs-intelligence-mcp-PLAN.md`).
+Milestone 2. Three tools over two data layers: `wait_time_trend` (RTT monthly
+history) plus `lookup_wait_time` and `rank_trusts_by_wait` (My Planned Care
+weekly current-state), each end to end with an offline test suite. Remaining
+milestones add CQC ratings and a combined trust profile (see
+`../nhs-intelligence-mcp-PLAN.md`).
+
+### A note on trust identity
+
+The two data layers name trusts differently. RTT uses a numeric provider code
+(e.g. `RGT`); My Planned Care uses the trust name (e.g. `Guy's and St Thomas'`).
+Rather than invent a mapping, each tool takes the identity its backing source
+actually publishes: `wait_time_trend` a provider code, the current-state tools a
+name. Reconciling the two into one identity is deferred to the combined trust
+profile (M3), where they must meet. Each tool description states which identity
+it expects, so a client picks the right one.
 
 ## Design
 
@@ -43,11 +54,15 @@ so tests inject in-memory fakes. This is the ports-and-adapters boundary from
 
 | Tool | Input | Returns |
 | --- | --- | --- |
-| `wait_time_trend` | provider_code, specialty | start/end waits, delta, % change, direction, monthly series |
+| `wait_time_trend` | provider_code, specialty | start/end waits, delta, % change, direction, monthly series (RTT) |
+| `lookup_wait_time` | provider (name), specialty | latest current wait for one trust (My Planned Care) |
+| `rank_trusts_by_wait` | specialty, region?, limit? | trusts ranked by current wait, longest first (My Planned Care) |
 
-Direction is decided by a **relative dead-band** (default 5%), so a small wobble
-on a long wait reads as `flat` rather than a spurious trend — the same
-noise-suppression choice made in the MRR-prediction project.
+Trend direction is decided by a **relative dead-band** (default 5%), so a small
+wobble on a long wait reads as `flat` rather than a spurious trend: the same
+noise-suppression choice made in the MRR-prediction project. Ranking lists
+trusts that publish a specialty but no figure after the ranked ones, so coverage
+gaps stay visible rather than being read as a zero wait.
 
 ## Running
 
@@ -56,6 +71,10 @@ pip install -e ".[dev]"
 
 # Point the server at an ingested RTT CSV cache (provider_code,specialty,weeks,as_of):
 export NHS_INTEL_RTT_CSV=tests/fixtures/rtt_sample.csv
+
+# Optional: add My Planned Care scraper output for the current-state tools.
+# Without it, wait_time_trend still works; the current-state tools report it missing.
+export NHS_INTEL_PLANNED_CARE_CSV=tests/fixtures/planned_care_sample.csv
 
 # Run the MCP server over stdio:
 nhs-intel-mcp
