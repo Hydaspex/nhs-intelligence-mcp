@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+# Local ingested data caches (RTT XLSX/CSV, CQC lookups) — never commit bulk data
+cache/
+data/
+*.xlsx
+!tests/fixtures/*.csv
