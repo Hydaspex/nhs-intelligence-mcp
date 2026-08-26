@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from typing import Any
 
 
 class Trend(str, Enum):
@@ -37,6 +38,10 @@ class WaitTimePoint:
         if self.weeks < 0:
             raise ValueError(f"weeks must be >= 0, got {self.weeks}")
 
+    def to_payload(self) -> dict[str, Any]:
+        """Serialise to the JSON-friendly shape returned by MCP tools."""
+        return {"weeks": self.weeks, "as_of": self.as_of.isoformat()}
+
 
 @dataclass(frozen=True)
 class TrendResult:
@@ -50,3 +55,21 @@ class TrendResult:
     pct_change: float | None    # None when the start value is zero
     direction: Trend
     series: tuple[WaitTimePoint, ...]  # full ordered series, earliest first
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialise to the ``found=true`` JSON shape returned by the trend tool.
+
+        This is the single definition of the trend wire format: tools serialise
+        by calling this, never by rebuilding the dict inline.
+        """
+        return {
+            "found": True,
+            "provider_code": self.provider_code,
+            "specialty": self.specialty,
+            "start": self.start.to_payload(),
+            "end": self.end.to_payload(),
+            "delta_weeks": self.delta_weeks,
+            "pct_change": self.pct_change,
+            "direction": self.direction.value,
+            "series": [p.to_payload() for p in self.series],
+        }

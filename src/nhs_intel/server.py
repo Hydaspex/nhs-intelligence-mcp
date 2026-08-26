@@ -8,13 +8,12 @@ MCP client connects and chains these tools.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from nhs_intel.analysis import compute_trend
+from nhs_intel.config import Settings
 from nhs_intel.sources import RttCsvSource
 from nhs_intel.sources.protocol import WaitTimeSource
 
@@ -22,18 +21,23 @@ mcp = FastMCP("nhs-intelligence")
 
 
 def _default_source() -> WaitTimeSource:
-    """Build the wait-time source from configuration.
+    """Build the configured wait-time source.
 
-    The CSV path comes from ``NHS_INTEL_RTT_CSV``; this is read lazily so the
-    module imports cleanly (and the tool list is inspectable) even when no data
-    file is configured yet.
+    Configuration is resolved lazily (only when a tool actually runs) so the
+    module imports cleanly and the tool list stays inspectable without a data
+    file present.
     """
-    csv_path = os.environ.get("NHS_INTEL_RTT_CSV")
-    if not csv_path:
-        raise RuntimeError(
-            "NHS_INTEL_RTT_CSV is not set; point it at an ingested RTT CSV cache."
-        )
-    return RttCsvSource(Path(csv_path))
+    return RttCsvSource(Settings.from_env().rtt_csv_path)
+
+
+def _not_found(provider_code: str, specialty: str, reason: str) -> dict[str, Any]:
+    """The single ``found=false`` shape, so every not-found path matches."""
+    return {
+        "found": False,
+        "provider_code": provider_code,
+        "specialty": specialty,
+        "reason": reason,
+    }
 
 
 def _trend_payload(
@@ -46,33 +50,18 @@ def _trend_payload(
     Kept separate from the MCP tool so it can be unit-tested with an injected
     fake source. The ``source`` seam stays out of the model-facing tool schema,
     where a Protocol parameter would neither serialise nor make sense to expose.
+    Serialisation of a found trend lives on ``TrendResult.to_payload``.
     """
     points = source.series(provider_code, specialty)
 
+    if not points:
+        return _not_found(provider_code, specialty, "no data")
     if len(points) < 2:
-        return {
-            "found": False,
-            "provider_code": provider_code,
-            "specialty": specialty,
-            "reason": (
-                "no data" if not points else "only one data point; cannot form a trend"
-            ),
-        }
+        return _not_found(
+            provider_code, specialty, "only one data point; cannot form a trend"
+        )
 
-    result = compute_trend(points)
-    return {
-        "found": True,
-        "provider_code": result.provider_code,
-        "specialty": result.specialty,
-        "start": {"weeks": result.start.weeks, "as_of": result.start.as_of.isoformat()},
-        "end": {"weeks": result.end.weeks, "as_of": result.end.as_of.isoformat()},
-        "delta_weeks": result.delta_weeks,
-        "pct_change": result.pct_change,
-        "direction": result.direction.value,
-        "series": [
-            {"weeks": p.weeks, "as_of": p.as_of.isoformat()} for p in result.series
-        ],
-    }
+    return compute_trend(points).to_payload()
 
 
 @mcp.tool(
