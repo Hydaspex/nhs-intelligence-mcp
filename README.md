@@ -11,44 +11,44 @@ That keeps the numbers deterministic and the whole server unit-testable offline.
 
 ## Status
 
-Milestone 2. Three tools over two data layers: `wait_time_trend` (RTT monthly
-history) plus `lookup_wait_time` and `rank_trusts_by_wait` (My Planned Care
-weekly current-state), each end to end with an offline test suite. Remaining
-milestones add CQC ratings and a combined trust profile (see
-`../nhs-intelligence-mcp-PLAN.md`).
+Milestone 3. Five tools over three data sources: RTT trend, My Planned Care
+current-state (lookup and ranking), CQC quality ratings, and a combined
+`trust_profile` that joins all three. Each is end to end with an offline test
+suite (57 tests).
 
 ### A note on trust identity
 
-The two data layers name trusts differently. RTT uses a numeric provider code
-(e.g. `RGT`); My Planned Care uses the trust name (e.g. `Guy's and St Thomas'`).
-Rather than invent a mapping, each tool takes the identity its backing source
-actually publishes: `wait_time_trend` a provider code, the current-state tools a
-name. Reconciling the two into one identity is deferred to the combined trust
-profile (M3), where they must meet. Each tool description states which identity
-it expects, so a client picks the right one.
+The three sources name trusts differently: RTT uses a numeric provider code
+(e.g. `RGT`), My Planned Care uses the trust name (e.g. `Guy's and St Thomas'`),
+CQC uses its own provider id (e.g. `1-101681210`). The single-source tools take
+the identity their source publishes. `trust_profile` reconciles the three from a
+curated mapping file; a trust absent from the mapping returns `found=false`.
+Rating data is supplementary: if the CQC feed is unreachable, the profile drops
+that one section and still returns the wait and trend data.
 
 ## Design
 
 ```
 src/nhs_intel/
-  domain/      # immutable value objects (WaitTimePoint, TrendResult)
-  sources/     # data adapters behind a Protocol (RttCsvSource; fakes in tests)
-  analysis/    # pure trend maths, unit-tested against golden expectations
+  domain/      # immutable value objects (WaitTimePoint, TrustRating, ...)
+  sources/     # adapters behind Protocols (CSV feeds, CQC HTTP, identity map)
+  analysis/    # pure trend, ranking and profile-join logic
   server.py    # thin FastMCP layer: validate -> pure handler -> serialise
 ```
 
 The pure core (`domain`, `analysis`) has no I/O and no MCP imports, so it runs in
-CI with no network, no key, and no live NHS site. Sources sit behind a `Protocol`
-so tests inject in-memory fakes. This is the ports-and-adapters boundary from
-`nhs-webscraper`, applied to data feeds.
+CI with no network and no live NHS feed. Every source sits behind a `Protocol`,
+including the CQC HTTP client, so tests inject in-memory fakes and the suite is
+fully offline. This is the ports-and-adapters boundary from `nhs-webscraper`,
+applied to data feeds.
 
 ## Data sources
 
-| Source | Frequency | Role |
-| --- | --- | --- |
-| NHS England RTT | Monthly | Authoritative trend backbone |
-| My Planned Care (via nhs-webscraper) | Weekly | Fresher current-state layer (M2) |
-| CQC ratings | Daily | Optional trust-quality context, key-gated (M3) |
+| Source | Frequency | Role | Access |
+| --- | --- | --- | --- |
+| NHS England RTT | Monthly | Trend backbone | CSV cache |
+| My Planned Care (via nhs-webscraper) | Weekly | Current-state layer | CSV |
+| CQC ratings | Daily | Trust-quality context | Public API, no key |
 
 ## Tools
 
@@ -57,12 +57,14 @@ so tests inject in-memory fakes. This is the ports-and-adapters boundary from
 | `wait_time_trend` | provider_code, specialty | start/end waits, delta, % change, direction, monthly series (RTT) |
 | `lookup_wait_time` | provider (name), specialty | latest current wait for one trust (My Planned Care) |
 | `rank_trusts_by_wait` | specialty, region?, limit? | trusts ranked by current wait, longest first (My Planned Care) |
+| `get_trust_rating` | cqc_provider_id | overall and per-domain CQC ratings |
+| `trust_profile` | identifier, specialty, by_name? | combined current wait, trend, and rating for one trust |
 
 Trend direction is decided by a **relative dead-band** (default 5%), so a small
 wobble on a long wait reads as `flat` rather than a spurious trend: the same
 noise-suppression choice made in the MRR-prediction project. Ranking lists
-trusts that publish a specialty but no figure after the ranked ones, so coverage
-gaps stay visible rather than being read as a zero wait.
+trusts that publish a specialty but no figure after the ranked ones, keeping
+coverage gaps visible and distinct from a zero wait.
 
 ## Running
 
@@ -72,16 +74,23 @@ pip install -e ".[dev]"
 # Point the server at an ingested RTT CSV cache (provider_code,specialty,weeks,as_of):
 export NHS_INTEL_RTT_CSV=tests/fixtures/rtt_sample.csv
 
-# Optional: add My Planned Care scraper output for the current-state tools.
-# Without it, wait_time_trend still works; the current-state tools report it missing.
+# Optional: My Planned Care scraper output for the current-state tools.
 export NHS_INTEL_PLANNED_CARE_CSV=tests/fixtures/planned_care_sample.csv
+
+# Optional: cross-source identity mapping for trust_profile.
+export NHS_INTEL_IDENTITY_CSV=tests/fixtures/identity_sample.csv
+
+# Optional: a partnerCode string sent with CQC requests to identify your caller.
+export NHS_INTEL_CQC_PARTNER_CODE=my-org
 
 # Run the MCP server over stdio:
 nhs-intel-mcp
 ```
 
-To use it from an MCP client, register `nhs-intel-mcp` as a stdio server with
-`NHS_INTEL_RTT_CSV` set in its environment.
+Only `NHS_INTEL_RTT_CSV` is required; each tool reports clearly when its source is
+unconfigured, and the CQC feed degrades to an absent rating section when
+unreachable. To use it from an MCP client, register `nhs-intel-mcp` as a stdio
+server with the environment variables above set.
 
 ## Development
 

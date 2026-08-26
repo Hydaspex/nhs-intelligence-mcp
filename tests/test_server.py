@@ -9,8 +9,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from nhs_intel.domain import CurrentWait, WaitTimePoint
-from nhs_intel.server import _lookup_payload, _ranking_payload, _trend_payload
+from nhs_intel.domain import CurrentWait, TrustRating, WaitTimePoint
+from nhs_intel.server import (
+    _lookup_payload,
+    _ranking_payload,
+    _rating_payload,
+    _trend_payload,
+)
 
 
 class FakeSource:
@@ -110,3 +115,25 @@ def test_ranking_tool_respects_region_and_limit():
     assert out["region"] == "London"
     assert out["count"] == 1
     assert out["trusts"][0]["provider"] == "King's"
+
+
+class FakeRatingSource:
+    def __init__(self, rating: TrustRating | None) -> None:
+        self._rating = rating
+
+    def rating(self, cqc_provider_id: str) -> TrustRating | None:
+        return self._rating
+
+
+def test_rating_tool_returns_rating():
+    rating = TrustRating("1-101681210", "Good", "2023-05-01", {"Safe": "Good"})
+    out = _rating_payload("1-101681210", FakeRatingSource(rating))
+    assert out["found"] is True
+    assert out["overall"] == "Good"
+    assert out["key_questions"]["Safe"] == "Good"
+
+
+def test_rating_tool_not_found():
+    out = _rating_payload("1-000000000", FakeRatingSource(None))
+    assert out["found"] is False
+    assert out["reason"] == "no current rating"

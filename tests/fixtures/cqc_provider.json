@@ -1,0 +1,17 @@
+{
+  "providerId": "1-101681210",
+  "name": "Guy's and St Thomas' NHS Foundation Trust",
+  "currentRatings": {
+    "overall": {
+      "rating": "Good",
+      "reportDate": "2023-05-01"
+    },
+    "keyQuestionRatings": [
+      {"name": "Safe", "rating": "Requires improvement"},
+      {"name": "Effective", "rating": "Good"},
+      {"name": "Caring", "rating": "Good"},
+      {"name": "Responsive", "rating": "Good"},
+      {"name": "Well-led", "rating": "Outstanding"}
+    ]
+  }
+}

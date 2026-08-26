@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from nhs_intel.domain import CurrentWait, WaitTimePoint
+from nhs_intel.domain import CurrentWait, TrustRating, WaitTimePoint
 
 
 @runtime_checkable
@@ -39,4 +39,30 @@ class CurrentWaitSource(Protocol):
 
         Used to rank trusts. The list is unordered; ranking is the caller's job.
         """
+        ...
+
+
+@runtime_checkable
+class HttpClient(Protocol):
+    """Minimal HTTP GET seam so live sources stay offline-testable.
+
+    The real implementation uses urllib; tests inject a fake returning fixture
+    JSON, so no network is touched in CI.
+    """
+
+    def get_json(self, url: str) -> dict:
+        """GET a URL and return the parsed JSON body.
+
+        Raises:
+            LookupError: if the resource does not exist (HTTP 404).
+        """
+        ...
+
+
+@runtime_checkable
+class RatingSource(Protocol):
+    """A source of CQC quality ratings, keyed on the CQC provider ID."""
+
+    def rating(self, cqc_provider_id: str) -> TrustRating | None:
+        """Return the current rating for a provider, or None if not rated/known."""
         ...

@@ -7,9 +7,11 @@ a cache, or the MCP runtime.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
 
 
@@ -72,6 +74,51 @@ class CurrentWait:
             "weeks": self.weeks,
             "as_of": self.as_of.isoformat() if self.as_of else None,
         }
+
+
+@dataclass(frozen=True)
+class TrustRating:
+    """A CQC quality rating for a provider.
+
+    ``overall`` is the headline rating (e.g. "Good", "Requires improvement").
+    ``key_questions`` maps each CQC domain (safe, effective, caring, responsive,
+    well-led) to its rating, and may be empty if the provider has an overall
+    rating but no per-domain breakdown.
+    """
+
+    cqc_provider_id: str
+    overall: str
+    report_date: str | None
+    key_questions: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        # Freeze the mapping so a frozen TrustRating cannot be mutated through it.
+        object.__setattr__(
+            self, "key_questions", MappingProxyType(dict(self.key_questions))
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "cqc_provider_id": self.cqc_provider_id,
+            "overall": self.overall,
+            "report_date": self.report_date,
+            "key_questions": dict(self.key_questions),
+        }
+
+
+@dataclass(frozen=True)
+class TrustIdentity:
+    """One trust's identity across the three data schemes.
+
+    RTT keys on ``provider_code`` (e.g. "RGT"), My Planned Care on
+    ``provider_name`` (e.g. "Guy's and St Thomas'"), CQC on ``cqc_provider_id``.
+    A trust missing from the mapping cannot be joined across sources, so the
+    combined profile abstains for it.
+    """
+
+    provider_code: str
+    provider_name: str
+    cqc_provider_id: str
 
 
 @dataclass(frozen=True)

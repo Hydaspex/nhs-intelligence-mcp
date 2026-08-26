@@ -12,10 +12,24 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from nhs_intel.analysis import compute_trend, rank_by_wait
+from nhs_intel.analysis import (
+    build_trust_profile,
+    compute_trend,
+    rank_by_wait,
+    unmapped_profile,
+)
 from nhs_intel.config import Settings
-from nhs_intel.sources import PlannedCareCsvSource, RttCsvSource
-from nhs_intel.sources.protocol import CurrentWaitSource, WaitTimeSource
+from nhs_intel.sources import (
+    CqcRatingSource,
+    PlannedCareCsvSource,
+    RttCsvSource,
+    TrustIdentityMap,
+)
+from nhs_intel.sources.protocol import (
+    CurrentWaitSource,
+    RatingSource,
+    WaitTimeSource,
+)
 
 mcp = FastMCP("nhs-intelligence")
 
@@ -33,6 +47,19 @@ def _default_source() -> WaitTimeSource:
 def _default_current_source() -> CurrentWaitSource:
     """Build the configured current-state (My Planned Care) source."""
     return PlannedCareCsvSource(Settings.from_env().require_planned_care())
+
+
+def _default_rating_source() -> RatingSource:
+    """Build the CQC rating source, using the configured partner code if set."""
+    settings = Settings.from_env()
+    if settings.cqc_partner_code:
+        return CqcRatingSource(partner_code=settings.cqc_partner_code)
+    return CqcRatingSource()
+
+
+def _default_identity_map() -> TrustIdentityMap:
+    """Build the configured trust-identity mapping."""
+    return TrustIdentityMap(Settings.from_env().require_identity())
 
 
 def _not_found(provider_code: str, specialty: str, reason: str) -> dict[str, Any]:
@@ -151,6 +178,67 @@ def rank_trusts_by_wait(
 ) -> dict[str, Any]:
     """MCP tool: trusts ranked by current wait for a specialty."""
     return _ranking_payload(specialty, _default_current_source(), region, limit)
+
+
+def _rating_payload(cqc_provider_id: str, source: RatingSource) -> dict[str, Any]:
+    """Pure handler for a CQC rating lookup by provider id."""
+    rating = source.rating(cqc_provider_id)
+    if rating is None:
+        return {
+            "found": False,
+            "cqc_provider_id": cqc_provider_id,
+            "reason": "no current rating",
+        }
+    return {"found": True, **rating.to_payload()}
+
+
+@mcp.tool(
+    description=(
+        "Look up a trust's current CQC quality rating by its CQC provider id "
+        "(e.g. '1-101681210'). Returns the overall rating (e.g. 'Good', 'Requires "
+        "improvement') and any per-domain ratings (safe, effective, caring, "
+        "responsive, well-led). Returns found=false if the provider is unknown or "
+        "not yet rated; do not infer a rating in that case."
+    )
+)
+def get_trust_rating(cqc_provider_id: str) -> dict[str, Any]:
+    """MCP tool: current CQC rating for a provider id."""
+    return _rating_payload(cqc_provider_id, _default_rating_source())
+
+
+@mcp.tool(
+    description=(
+        "Build a combined profile for one NHS trust and specialty, joining its "
+        "current wait (My Planned Care), waiting-time trend (RTT), and CQC quality "
+        "rating. Identify the trust by RTT provider code (e.g. 'RGT') or trust "
+        "name (e.g. 'Guy's and St Thomas''); set by_name=true when passing a name. "
+        "Each section is null when that source holds no data. If the trust is not "
+        "in the identity mapping, returns found=false."
+    )
+)
+def trust_profile(
+    identifier: str,
+    specialty: str,
+    by_name: bool = False,
+) -> dict[str, Any]:
+    """MCP tool: combined wait, trend and rating profile for a trust."""
+    identity_map = _default_identity_map()
+    identity = (
+        identity_map.by_name(identifier)
+        if by_name
+        else identity_map.by_code(identifier)
+    )
+    if identity is None:
+        return unmapped_profile(identifier)
+
+    return build_trust_profile(
+        identity=identity,
+        specialty=specialty,
+        wait_source=_default_source(),
+        current_source=_default_current_source(),
+        rating_source=_default_rating_source(),
+        trend_fn=compute_trend,
+    )
 
 
 def main() -> None:
