@@ -8,7 +8,8 @@ dist/
 .ruff_cache/
 .venv/
 venv/
-# Local ingested data caches (RTT XLSX/CSV, CQC lookups) — never commit bulk data
+.DS_Store
+# Local ingested data caches (RTT XLSX/CSV, CQC lookups): never commit bulk data
 cache/
 data/
 *.xlsx
