@@ -68,8 +68,13 @@ coverage gaps visible and distinct from a zero wait.
 
 ## Running
 
+Dependencies are managed with [uv](https://docs.astral.sh/uv/) and locked in
+`uv.lock`; a plain `requirements.txt` is exported alongside it for anyone
+without `uv`.
+
 ```bash
-pip install -e ".[dev]"
+# uv resolves and creates .venv automatically from uv.lock:
+uv sync --extra dev
 
 # Point the server at an ingested RTT CSV cache (provider_code,specialty,weeks,as_of):
 export NHS_INTEL_RTT_CSV=tests/fixtures/rtt_sample.csv
@@ -84,18 +89,22 @@ export NHS_INTEL_IDENTITY_CSV=tests/fixtures/identity_sample.csv
 export NHS_INTEL_CQC_PARTNER_CODE=my-org
 
 # Run the MCP server over stdio:
-nhs-intel-mcp
+uv run nhs-intel-mcp
 ```
 
-Only `NHS_INTEL_RTT_CSV` is required; each tool reports clearly when its source is
-unconfigured, and the CQC feed degrades to an absent rating section when
-unreachable. To use it from an MCP client, register `nhs-intel-mcp` as a stdio
-server with the environment variables above set.
+Without `uv`: `pip install -r requirements.txt` then run `nhs-intel-mcp`
+directly, with the same environment variables set.
+
+Only `NHS_INTEL_RTT_CSV` is required; each tool reports clearly when its source
+is unconfigured, and the CQC feed degrades to an absent rating section when
+unreachable. `.mcp.json` registers the server for Claude Code using `uv run`,
+so the project's own environment is used regardless of what is active in the
+calling shell.
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest        # offline, no network or keys required
-ruff check .
+uv sync --extra dev
+uv run pytest    # offline, no network or keys required
+uv run ruff check .
 ```

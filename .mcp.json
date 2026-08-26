@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "nhs-intelligence": {
-      "command": "nhs-intel-mcp",
+      "command": "uv",
+      "args": ["run", "nhs-intel-mcp"],
       "env": {
         "NHS_INTEL_RTT_CSV": "tests/fixtures/rtt_sample.csv",
         "NHS_INTEL_PLANNED_CARE_CSV": "tests/fixtures/planned_care_sample.csv",
