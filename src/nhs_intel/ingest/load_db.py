@@ -27,6 +27,10 @@ _SCHEMA = Path(__file__).parents[3] / "data" / "schema.sql"
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA.read_text())
+    # Migrate existing identity tables that pre-date the overall_rating column.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(identity)")}
+    if "overall_rating" not in cols:
+        conn.execute("ALTER TABLE identity ADD COLUMN overall_rating TEXT")
     conn.commit()
 
 
@@ -85,13 +89,36 @@ def _load_identity(conn: sqlite3.Connection, path: Path) -> int:
             (
                 row["provider_code"].strip(),
                 row["provider_name"].strip(),
-                row["cqc_provider_id"].strip(),
+                row.get("planned_care_name", "").strip() or None,
+                row.get("cqc_provider_id", "").strip() or None,
             )
             for row in reader
         ]
     conn.executemany(
-        "INSERT OR REPLACE INTO identity (provider_code, provider_name, cqc_provider_id) "
-        "VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO identity "
+        "(provider_code, provider_name, planned_care_name, cqc_provider_id) "
+        "VALUES (?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def _load_cqc(conn: sqlite3.Connection, path: Path) -> int:
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        rows = [
+            (
+                row["provider_code"].strip(),
+                row["provider_name"].strip(),
+                row["overall_rating"].strip(),
+            )
+            for row in reader
+        ]
+    conn.executemany(
+        "INSERT INTO identity (provider_code, provider_name, overall_rating) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(provider_code) DO UPDATE SET overall_rating = excluded.overall_rating",
         rows,
     )
     conn.commit()
@@ -105,6 +132,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--rtt", default=os.environ.get("NHS_INTEL_RTT_CSV"))
     parser.add_argument("--planned-care", default=os.environ.get("NHS_INTEL_PLANNED_CARE_CSV"))
     parser.add_argument("--identity", default=os.environ.get("NHS_INTEL_IDENTITY_CSV"))
+    parser.add_argument("--cqc", default=None, help="Path to CQC ratings CSV")
     parser.add_argument(
         "--db",
         default=os.environ.get("NHS_INTEL_DB") or str(Path(user_data_dir("nhs-intel")) / "nhs_intel.db"),
@@ -137,6 +165,12 @@ def main() -> None:
             print(f"identity: {n} rows inserted")
         else:
             print("identity: skipped (no --identity arg)")
+
+        if args.cqc:
+            n = _load_cqc(conn, Path(args.cqc))
+            print(f"cqc: {n} rows upserted")
+        else:
+            print("cqc: skipped (no --cqc arg)")
 
 
 if __name__ == "__main__":

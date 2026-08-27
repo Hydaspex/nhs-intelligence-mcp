@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from nhs_intel.domain import CurrentWait, TrendResult, TrustIdentity, TrustRating, WaitTimePoint
+from nhs_intel.domain import CurrentWait, TrendResult, TrustIdentity, WaitTimePoint
 from nhs_intel.sources.protocol import (
     CurrentWaitSource,
-    RatingSource,
     WaitTimeSource,
 )
 
@@ -26,7 +25,6 @@ def build_trust_profile(
     specialty: str,
     wait_source: WaitTimeSource,
     current_source: CurrentWaitSource,
-    rating_source: RatingSource,
     trend_fn: TrendFn,
 ) -> dict[str, object]:
     """Assemble a profile for one resolved trust and specialty.
@@ -39,12 +37,12 @@ def build_trust_profile(
         "provider_name": identity.provider_name,
         "specialty": specialty,
         "current": _current_section(
-            current_source.latest(identity.provider_name, specialty)
+            current_source.latest(identity.planned_care_name or identity.provider_name, specialty)
         ),
         "trend": _trend_section(
             wait_source.series(identity.provider_code, specialty), trend_fn
         ),
-        "rating": _rating_section(rating_source.rating(identity.cqc_provider_id)),
+        "rating": _rating_section(identity),
     }
 
 
@@ -69,5 +67,7 @@ def _trend_section(
     return trend_fn(points).to_payload()
 
 
-def _rating_section(rating: TrustRating | None) -> dict[str, object] | None:
-    return rating.to_payload() if rating is not None else None
+def _rating_section(identity: TrustIdentity) -> dict[str, object] | None:
+    if not identity.overall_rating:
+        return None
+    return {"overall": identity.overall_rating}

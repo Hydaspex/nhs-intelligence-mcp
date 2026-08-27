@@ -25,7 +25,7 @@ class TrustIdentityDbMap:
         with sqlite3.connect(self._db_path) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.execute(
-                "SELECT provider_code, provider_name, cqc_provider_id "
+                "SELECT provider_code, provider_name, planned_care_name, cqc_provider_id, overall_rating "
                 "FROM identity WHERE provider_code = ?",
                 (provider_code,),
             )
@@ -35,7 +35,9 @@ class TrustIdentityDbMap:
         return TrustIdentity(
             provider_code=row["provider_code"],
             provider_name=row["provider_name"],
+            planned_care_name=row["planned_care_name"],
             cqc_provider_id=row["cqc_provider_id"],
+            overall_rating=row["overall_rating"],
         )
 
     def by_name(self, provider_name: str) -> TrustIdentity | None:
@@ -43,8 +45,8 @@ class TrustIdentityDbMap:
         with sqlite3.connect(self._db_path) as conn:
             conn.row_factory = sqlite3.Row
             cur = conn.execute(
-                "SELECT provider_code, provider_name, cqc_provider_id "
-                "FROM identity WHERE provider_name = ?",
+                "SELECT provider_code, provider_name, planned_care_name, cqc_provider_id, overall_rating "
+                "FROM identity WHERE planned_care_name = ?",
                 (provider_name,),
             )
             row = cur.fetchone()
@@ -53,5 +55,7 @@ class TrustIdentityDbMap:
         return TrustIdentity(
             provider_code=row["provider_code"],
             provider_name=row["provider_name"],
+            planned_care_name=row["planned_care_name"],
             cqc_provider_id=row["cqc_provider_id"],
+            overall_rating=row["overall_rating"],
         )

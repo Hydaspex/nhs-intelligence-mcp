@@ -118,7 +118,9 @@ class TrustIdentity:
 
     provider_code: str
     provider_name: str
-    cqc_provider_id: str
+    cqc_provider_id: str | None = None
+    planned_care_name: str | None = None
+    overall_rating: str | None = None
 
 
 @dataclass(frozen=True)

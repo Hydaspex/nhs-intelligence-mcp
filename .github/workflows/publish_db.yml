@@ -106,17 +106,32 @@ jobs:
           || echo "available=false" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
-      # Load both sources into nhs_intel.db
+      # Download CQC ratings
+      # ------------------------------------------------------------------
+      - name: Download CQC ratings
+        id: cqc_download
+        run: |
+          uv run python -m nhs_intel.ingest.cqc_ingest --out /tmp/cqc_ratings.csv \
+          && echo "available=true" >> "$GITHUB_OUTPUT" \
+          || echo "available=false" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # Load all sources into nhs_intel.db
       # ------------------------------------------------------------------
       - name: Load DB
         run: |
           RTT_ARG=""
+          CQC_ARG=""
           if [ "${{ steps.rtt_download.outputs.available }}" = "true" ]; then
             RTT_ARG="--rtt /tmp/rtt.csv"
+          fi
+          if [ "${{ steps.cqc_download.outputs.available }}" = "true" ]; then
+            CQC_ARG="--cqc /tmp/cqc_ratings.csv"
           fi
           uv run nhs-intel-load-db \
             --planned-care /tmp/planned_care.csv \
             $RTT_ARG \
+            $CQC_ARG \
             --db nhs_intel.db
 
       # ------------------------------------------------------------------

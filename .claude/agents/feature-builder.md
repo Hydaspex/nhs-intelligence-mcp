@@ -1,0 +1,1 @@
+/Users/mac/projects/ds-claude-code-harness/.claude/agents/feature-builder.md

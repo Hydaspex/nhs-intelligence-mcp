@@ -20,5 +20,7 @@ CREATE TABLE IF NOT EXISTS planned_care (
 CREATE TABLE IF NOT EXISTS identity (
     provider_code TEXT PRIMARY KEY,
     provider_name TEXT,
-    cqc_provider_id TEXT
+    planned_care_name TEXT,
+    cqc_provider_id TEXT,
+    overall_rating TEXT
 );

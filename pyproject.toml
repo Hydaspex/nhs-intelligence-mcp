@@ -24,6 +24,7 @@ dev = [
 [project.scripts]
 nhs-intel-mcp = "nhs_intel.server:main"
 nhs-intel-load-db = "nhs_intel.ingest.load_db:main"
+nhs-intel-cqc-ingest = "nhs_intel.ingest.cqc_ingest:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

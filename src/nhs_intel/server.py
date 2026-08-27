@@ -231,7 +231,6 @@ def trust_profile(
         specialty=specialty,
         wait_source=_default_source(),
         current_source=_default_current_source(),
-        rating_source=_default_rating_source(),
         trend_fn=compute_trend,
     )
 
