@@ -37,7 +37,7 @@ jobs:
         run: uv sync
 
       - name: Install Playwright chromium
-        run: uv run --project _webscraper playwright install chromium --with-deps
+        run: uv run --project _webscraper python -m playwright install chromium --with-deps
 
       - name: Install MCP server deps
         run: uv sync
