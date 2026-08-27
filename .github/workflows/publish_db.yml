@@ -34,10 +34,11 @@ jobs:
 
       - name: Install webscraper deps
         working-directory: _webscraper
-        run: uv sync
+        run: uv sync --extra crawl
 
       - name: Install Playwright chromium
-        run: uv run --project _webscraper python -m playwright install chromium --with-deps
+        working-directory: _webscraper
+        run: .venv/bin/python -m playwright install chromium --with-deps
 
       - name: Install MCP server deps
         run: uv sync
@@ -46,8 +47,9 @@ jobs:
       # Scrape NHS My Planned Care
       # ------------------------------------------------------------------
       - name: Scrape My Planned Care
+        working-directory: _webscraper
         run: |
-          uv run --project _webscraper python -m nhs_scraper.cli \
+          .venv/bin/python -m nhs_scraper.cli \
             --discover \
             --limit 50 \
             --max-depth 1 \
