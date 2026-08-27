@@ -1,0 +1,150 @@
+name: Publish nhs_intel.db
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # Sunday 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create releases
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout nhs-intelligence-mcp
+        uses: actions/checkout@v4
+
+      - name: Checkout nhs-webscraper
+        uses: actions/checkout@v4
+        with:
+          repository: Hydaspex/nhs-webscraper
+          token: ${{ secrets.WEBSCRAPER_READ_TOKEN }}
+          path: _webscraper
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install webscraper deps
+        working-directory: _webscraper
+        run: uv sync
+
+      - name: Install Playwright chromium
+        run: uv run --project _webscraper playwright install chromium --with-deps
+
+      - name: Install MCP server deps
+        run: uv sync
+
+      # ------------------------------------------------------------------
+      # Scrape NHS My Planned Care
+      # ------------------------------------------------------------------
+      - name: Scrape My Planned Care
+        run: |
+          uv run --project _webscraper python -m nhs_scraper.cli \
+            --discover \
+            --limit 50 \
+            --max-depth 1 \
+            --concurrency 2 \
+            --output /tmp/planned_care.csv
+
+      # ------------------------------------------------------------------
+      # Download latest RTT XLSX from NHS England
+      # The RTT data is published with ~2 month lag.  We compute the target
+      # month and NHS financial year dynamically so the workflow stays
+      # correct across year boundaries without manual updates.
+      # ------------------------------------------------------------------
+      - name: Compute RTT month and index URL
+        id: rtt_meta
+        run: |
+          python3 - <<'EOF'
+          import datetime, os
+
+          today = datetime.date.today()
+          # NHS England typically publishes RTT data 2 months after close of month
+          target = today.replace(day=1) - datetime.timedelta(days=1)   # prev month end
+          target = target.replace(day=1) - datetime.timedelta(days=1)  # month before that
+          target = target.replace(day=1)
+
+          year_month = target.strftime("%Y-%m")  # e.g. 2026-06
+
+          # Derive NHS financial year (April–March)
+          y = target.year
+          if target.month < 4:
+              fy_start, fy_end = y - 1, y
+          else:
+              fy_start, fy_end = y, y + 1
+          fy_slug = f"{fy_start}-{str(fy_end)[-2:]}"  # e.g. 2026-27
+
+          index_url = (
+              "https://www.england.nhs.uk/statistics/statistical-work-areas/"
+              f"rtt-waiting-times/rtt-data-{fy_slug}/"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"year_month={year_month}\n")
+              fh.write(f"index_url={index_url}\n")
+          EOF
+
+      - name: Download RTT data
+        id: rtt_download
+        run: |
+          uv run python -m nhs_intel.ingest.rtt_ingest \
+            --index-url "${{ steps.rtt_meta.outputs.index_url }}" \
+            --month "${{ steps.rtt_meta.outputs.year_month }}" \
+            --out /tmp/rtt.csv \
+            --xlsx-cache /tmp/rtt.xlsx \
+          && echo "available=true" >> "$GITHUB_OUTPUT" \
+          || echo "available=false" >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # Load both sources into nhs_intel.db
+      # ------------------------------------------------------------------
+      - name: Load DB
+        run: |
+          RTT_ARG=""
+          if [ "${{ steps.rtt_download.outputs.available }}" = "true" ]; then
+            RTT_ARG="--rtt /tmp/rtt.csv"
+          fi
+          uv run nhs-intel-load-db \
+            --planned-care /tmp/planned_care.csv \
+            $RTT_ARG \
+            --db nhs_intel.db
+
+      # ------------------------------------------------------------------
+      # Compute SHA-256 checksum
+      # ------------------------------------------------------------------
+      - name: Compute SHA-256
+        run: sha256sum nhs_intel.db > nhs_intel.db.sha256
+
+      # ------------------------------------------------------------------
+      # Publish as a GitHub release
+      # ------------------------------------------------------------------
+      - name: Determine release tag
+        id: tag
+        run: echo "name=data-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "NHS Intelligence DB — ${{ steps.tag.outputs.name }}"
+          body: |
+            Automated weekly build of `nhs_intel.db`.
+
+            Sources:
+            - NHS My Planned Care scrape (all trusts, concurrency 2)
+            - NHS England RTT Incomplete Provider (${{ steps.rtt_meta.outputs.year_month }})
+
+            SHA-256: see `nhs_intel.db.sha256`
+          files: |
+            nhs_intel.db
+            nhs_intel.db.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

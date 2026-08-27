@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "mcp>=1.2,<2",
+    "openpyxl>=3.1.5",
+    "platformdirs>=4.11.4",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +23,7 @@ dev = [
 
 [project.scripts]
 nhs-intel-mcp = "nhs_intel.server:main"
+nhs-intel-load-db = "nhs_intel.ingest.load_db:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

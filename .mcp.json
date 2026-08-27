@@ -2,12 +2,7 @@
   "mcpServers": {
     "nhs-intelligence": {
       "command": "uv",
-      "args": ["run", "nhs-intel-mcp"],
-      "env": {
-        "NHS_INTEL_RTT_CSV": "tests/fixtures/rtt_sample.csv",
-        "NHS_INTEL_PLANNED_CARE_CSV": "tests/fixtures/planned_care_sample.csv",
-        "NHS_INTEL_IDENTITY_CSV": "tests/fixtures/identity_sample.csv"
-      }
+      "args": ["run", "nhs-intel-mcp"]
     }
   }
 }

@@ -11,6 +11,9 @@ venv/
 .DS_Store
 # Local ingested data caches (RTT XLSX/CSV, CQC lookups): never commit bulk data
 cache/
-data/
+data/nhs_intel.db
 *.xlsx
 !tests/fixtures/*.csv
+# Track schema and gitkeep but not the DB
+!data/schema.sql
+!data/.gitkeep

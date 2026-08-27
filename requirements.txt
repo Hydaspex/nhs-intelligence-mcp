@@ -25,6 +25,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     # via pytest
 cryptography==50.0.1
     # via pyjwt
+et-xmlfile==2.0.0
+    # via openpyxl
 h11==0.16.0
     # via
     #   httpcore
@@ -46,6 +48,8 @@ jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
     # via jsonschema
 mcp==1.29.1
+    # via nhs-intelligence-mcp
+openpyxl==3.1.5
     # via nhs-intelligence-mcp
 packaging==26.3
     # via pytest

@@ -21,9 +21,9 @@ from nhs_intel.analysis import (
 from nhs_intel.config import Settings
 from nhs_intel.sources import (
     CqcRatingSource,
-    PlannedCareCsvSource,
-    RttCsvSource,
-    TrustIdentityMap,
+    PlannedCareDbSource,
+    RttDbSource,
+    TrustIdentityDbMap,
 )
 from nhs_intel.sources.protocol import (
     CurrentWaitSource,
@@ -35,18 +35,13 @@ mcp = FastMCP("nhs-intelligence")
 
 
 def _default_source() -> WaitTimeSource:
-    """Build the configured historical wait-time (RTT) source.
-
-    Configuration is resolved lazily (only when a tool actually runs) so the
-    module imports cleanly and the tool list stays inspectable without a data
-    file present.
-    """
-    return RttCsvSource(Settings.from_env().rtt_csv_path)
+    """Build the configured historical wait-time (RTT) source from SQLite."""
+    return RttDbSource(Settings.from_env().db_path)
 
 
 def _default_current_source() -> CurrentWaitSource:
-    """Build the configured current-state (My Planned Care) source."""
-    return PlannedCareCsvSource(Settings.from_env().require_planned_care())
+    """Build the configured current-state (My Planned Care) source from SQLite."""
+    return PlannedCareDbSource(Settings.from_env().db_path)
 
 
 def _default_rating_source() -> RatingSource:
@@ -57,9 +52,9 @@ def _default_rating_source() -> RatingSource:
     return CqcRatingSource()
 
 
-def _default_identity_map() -> TrustIdentityMap:
-    """Build the configured trust-identity mapping."""
-    return TrustIdentityMap(Settings.from_env().require_identity())
+def _default_identity_map() -> TrustIdentityDbMap:
+    """Build the configured trust-identity mapping from SQLite."""
+    return TrustIdentityDbMap(Settings.from_env().db_path)
 
 
 def _not_found(provider_code: str, specialty: str, reason: str) -> dict[str, Any]:
