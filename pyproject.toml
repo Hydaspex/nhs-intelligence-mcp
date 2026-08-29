@@ -20,11 +20,15 @@ dev = [
     "pytest>=8",
     "ruff>=0.6",
 ]
+crawl = [
+    "playwright>=1.40",
+]
 
 [project.scripts]
 nhs-intel-mcp = "nhs_intel.server:main"
 nhs-intel-load-db = "nhs_intel.ingest.load_db:main"
 nhs-intel-cqc-ingest = "nhs_intel.ingest.cqc_ingest:main"
+nhs-intel-rtt-backfill = "nhs_intel.ingest.rtt_backfill:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -73,6 +73,6 @@ uv run nhs-intel-mcp
 
 ## CI
 
-Runs every Sunday 02:00 UTC. Scrapes 131 trusts, downloads RTT + CQC data, publishes `nhs_intel.db` + SHA-256.
+Runs every Sunday 02:00 UTC. Seeds from the previous release, scrapes 130 trusts, refreshes CQC data, and incrementally backfills any recent RTT months the DB is missing, so waiting-time history accrues across runs. Publishes `nhs_intel.db` + SHA-256.
 
 Requires `WEBSCRAPER_READ_TOKEN` secret — see [.github/SECRETS.md](.github/SECRETS.md).

@@ -41,7 +41,25 @@ jobs:
         run: .venv/bin/python -m playwright install chromium --with-deps
 
       - name: Install MCP server deps
-        run: uv sync
+        run: uv sync --extra crawl
+
+      - name: Install Playwright chromium (for WAF-gated RTT index)
+        run: uv run playwright install chromium --with-deps
+
+      # ------------------------------------------------------------------
+      # Seed from the previous release so RTT history accrues across runs.
+      # A fresh checkout has no DB; each build starts from the last one and
+      # only adds the months it is missing. First-ever run seeds from empty.
+      # ------------------------------------------------------------------
+      - name: Seed from previous release DB
+        run: |
+          if gh release download --pattern nhs_intel.db --dir . 2>/dev/null; then
+            echo "seeded from previous release"
+          else
+            echo "no previous release; starting from empty DB"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ------------------------------------------------------------------
       # Scrape NHS My Planned Care
@@ -57,55 +75,6 @@ jobs:
             --output /tmp/planned_care.csv
 
       # ------------------------------------------------------------------
-      # Download latest RTT XLSX from NHS England
-      # The RTT data is published with ~2 month lag.  We compute the target
-      # month and NHS financial year dynamically so the workflow stays
-      # correct across year boundaries without manual updates.
-      # ------------------------------------------------------------------
-      - name: Compute RTT month and index URL
-        id: rtt_meta
-        run: |
-          python3 - <<'EOF'
-          import datetime, os
-
-          today = datetime.date.today()
-          # NHS England typically publishes RTT data 2 months after close of month
-          target = today.replace(day=1) - datetime.timedelta(days=1)   # prev month end
-          target = target.replace(day=1) - datetime.timedelta(days=1)  # month before that
-          target = target.replace(day=1)
-
-          year_month = target.strftime("%Y-%m")  # e.g. 2026-06
-
-          # Derive NHS financial year (April–March)
-          y = target.year
-          if target.month < 4:
-              fy_start, fy_end = y - 1, y
-          else:
-              fy_start, fy_end = y, y + 1
-          fy_slug = f"{fy_start}-{str(fy_end)[-2:]}"  # e.g. 2026-27
-
-          index_url = (
-              "https://www.england.nhs.uk/statistics/statistical-work-areas/"
-              f"rtt-waiting-times/rtt-data-{fy_slug}/"
-          )
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"year_month={year_month}\n")
-              fh.write(f"index_url={index_url}\n")
-          EOF
-
-      - name: Download RTT data
-        id: rtt_download
-        run: |
-          uv run python -m nhs_intel.ingest.rtt_ingest \
-            --index-url "${{ steps.rtt_meta.outputs.index_url }}" \
-            --month "${{ steps.rtt_meta.outputs.year_month }}" \
-            --out /tmp/rtt.csv \
-            --xlsx-cache /tmp/rtt.xlsx \
-          && echo "available=true" >> "$GITHUB_OUTPUT" \
-          || echo "available=false" >> "$GITHUB_OUTPUT"
-
-      # ------------------------------------------------------------------
       # Download CQC ratings
       # ------------------------------------------------------------------
       - name: Download CQC ratings
@@ -116,23 +85,33 @@ jobs:
           || echo "available=false" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
-      # Load all sources into nhs_intel.db
+      # Load the always-current sources into the seeded DB. This also creates
+      # the schema, so the RTT backfill below can insert into an existing table.
       # ------------------------------------------------------------------
-      - name: Load DB
+      - name: Load DB (planned care + CQC)
         run: |
-          RTT_ARG=""
           CQC_ARG=""
-          if [ "${{ steps.rtt_download.outputs.available }}" = "true" ]; then
-            RTT_ARG="--rtt /tmp/rtt.csv"
-          fi
           if [ "${{ steps.cqc_download.outputs.available }}" = "true" ]; then
             CQC_ARG="--cqc /tmp/cqc_ratings.csv"
           fi
           uv run nhs-intel-load-db \
             --planned-care /tmp/planned_care.csv \
-            $RTT_ARG \
             $CQC_ARG \
             --db nhs_intel.db
+
+      # ------------------------------------------------------------------
+      # Incrementally add any recent RTT months the seeded DB is missing.
+      # NHS England's index is behind AWS WAF, so this drives a real browser.
+      # Reconciling a window (not just the latest month) also self-heals a
+      # missed run. A run that adds nothing is not fatal — the DB stays valid.
+      # ------------------------------------------------------------------
+      - name: Backfill missing RTT months
+        run: |
+          uv run nhs-intel-rtt-backfill \
+            --db nhs_intel.db \
+            --window 6 \
+            --xlsx-cache /tmp/rtt_backfill \
+          || echo "RTT backfill added no new months this run"
 
       # ------------------------------------------------------------------
       # Compute SHA-256 checksum
@@ -147,6 +126,14 @@ jobs:
         id: tag
         run: echo "name=data-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
+      - name: Summarise RTT coverage
+        id: rtt_coverage
+        run: |
+          months=$(uv run python -c "import sqlite3,sys; \
+          rows=sqlite3.connect('nhs_intel.db').execute('SELECT DISTINCT as_of FROM rtt ORDER BY as_of').fetchall(); \
+          print(', '.join(r[0][:7] for r in rows) or 'none')")
+          echo "months=$months" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -157,7 +144,7 @@ jobs:
 
             Sources:
             - NHS My Planned Care scrape (all trusts, concurrency 2)
-            - NHS England RTT Incomplete Provider (${{ steps.rtt_meta.outputs.year_month }})
+            - NHS England RTT Incomplete Provider (months: ${{ steps.rtt_coverage.outputs.months }})
 
             SHA-256: see `nhs_intel.db.sha256`
           files: |
